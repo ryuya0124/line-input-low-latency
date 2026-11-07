@@ -1,0 +1,12 @@
+/build/
+*.obj
+*.log
+settings.json
+state.json
+recovery.json
+*-result.json
+.vs/
+Source-*.zip
+*.exe
+*.pdb
+*.tmp
