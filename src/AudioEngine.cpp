@@ -39,7 +39,7 @@ struct State{
  static constexpr size_t ringSize=192000,envSize=16384;
  std::vector<Stereo> ring=std::vector<Stereo>(ringSize);
  std::atomic<unsigned long long>written{0},consumed{0},packets{0},captureLostFrames{0},captureGaps{0},underflows{0},resyncs{0},renderLate{0},duplicates{0};
- std::atomic<double> queueMs{0},reserveMs{4},corr{0};std::atomic<int> latencyMs{-1};
+ std::atomic<double> queueMs{0},reserveMs{4},corr{0},inputPeak{0};std::atomic<int> latencyMs{-1};
  std::atomic<bool> failed{false},collect{false};std::array<EnvelopePoint,envSize>env{};std::atomic<size_t>envWritten{0};
  std::mutex errorLock;std::string error;
  void fail(const char*message,HANDLE stop){std::lock_guard<std::mutex>lock(errorLock);error=message;failed=true;SetEvent(stop);}
@@ -57,7 +57,9 @@ static void captureLoop(Endpoint&capture,State&s,HANDLE stop,HANDLE go,bool excl
     if(havePosition&&pos>lastEnd){s.captureGaps++;s.captureLostFrames.fetch_add(pos-lastEnd);}
     lastEnd=pos+frames;havePosition=true;
     const float*fp=reinterpret_cast<const float*>(data);const short*pcm=reinterpret_cast<const short*>(data);
-    for(UINT32 i=0;i<frames;i++){Stereo sample;if(!(flags&AUDCLNT_BUFFERFLAGS_SILENT)){sample.l=capture.pcm16?pcm[i*2]/32768.0f:fp[i*2];sample.r=capture.pcm16?pcm[i*2+1]/32768.0f:fp[i*2+1];}s.ring[(write+i)%State::ringSize]=sample;}
+    double peak=0;
+    for(UINT32 i=0;i<frames;i++){Stereo sample;if(!(flags&AUDCLNT_BUFFERFLAGS_SILENT)){sample.l=capture.pcm16?pcm[i*2]/32768.0f:fp[i*2];sample.r=capture.pcm16?pcm[i*2+1]/32768.0f:fp[i*2+1];}s.ring[(write+i)%State::ringSize]=sample;peak=std::max(peak,double(std::max(std::abs(sample.l),std::abs(sample.r))));}
+    double previousPeak=s.inputPeak.load(std::memory_order_relaxed);while(peak>previousPeak&&!s.inputPeak.compare_exchange_weak(previousPeak,peak,std::memory_order_relaxed)){}
     if(s.collect.load(std::memory_order_relaxed)&&!(flags&AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR)){size_t ew=s.envWritten.load(std::memory_order_relaxed);const UINT32 hop=capture.format->nSamplesPerSec/1000;for(UINT32 i=0;i+hop<=frames&&ew<State::envSize;i+=hop){double sum=0;for(UINT32 j=0;j<hop;j++){const auto&a=s.ring[(write+i+j)%State::ringSize];sum+=std::abs(a.l)+std::abs(a.r);}s.env[ew++]={qpc*1e-7+(i+hop*.5)/capture.format->nSamplesPerSec,sum/(hop*2)};}s.envWritten.store(ew,std::memory_order_release);}
     write+=frames;s.written.store(write,std::memory_order_release);s.packets++;check(reader->ReleaseBuffer(frames),"CaptureRelease");if(capture.polling){check(capture.client->GetCurrentPadding(&packet),"InputNext");}else{if(exclusive)break;check(reader->GetNextPacketSize(&packet),"CaptureNext");}
    }
@@ -93,7 +95,7 @@ static void measureLoop(State&s,HANDLE stop,const wchar_t*output){
 }
 static std::string escaped(const std::string&value){std::string out;for(char c:value){if(c=='"'||c=='\\')out+='\\';if(c>=32)out+=c;}return out;}
 static void statusFile(const std::filesystem::path&path,State&s,unsigned long long uptime,bool exclusive){
- std::string error;{std::lock_guard<std::mutex> guard(s.errorLock);error=s.error;}auto temp=path;temp+=L".tmp";std::ofstream f(temp,std::ios::binary|std::ios::trunc);f<<"{\"state\":\""<<(s.failed?"error":"running")<<"\",\"pid\":"<<GetCurrentProcessId()<<",\"uptimeSeconds\":"<<uptime<<",\"inputExclusive\":"<<(exclusive?"true":"false")<<",\"otherPcAudio\":true,\"packets\":"<<s.packets.load()<<",\"captureFrames\":"<<s.written.load()<<",\"captureGaps\":"<<s.captureGaps.load()<<",\"captureLostFrames\":"<<s.captureLostFrames.load()<<",\"bufferShortages\":"<<s.underflows.load()<<",\"resyncs\":"<<s.resyncs.load()<<",\"lateOutput\":"<<s.renderLate.load()<<",\"duplicates\":"<<s.duplicates.load()<<",\"reserveMs\":"<<s.reserveMs.load()<<",\"queueMs\":"<<s.queueMs.load()<<",\"latencyMs\":"<<s.latencyMs.load()<<",\"correlation\":"<<s.corr.load()<<",\"measuring\":"<<(s.collect?"true":"false")<<",\"error\":\""<<escaped(error)<<"\"}";f.close();MoveFileExW(temp.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING);
+ std::string error;{std::lock_guard<std::mutex> guard(s.errorLock);error=s.error;}auto temp=path;temp+=L".tmp";std::ofstream f(temp,std::ios::binary|std::ios::trunc);f<<"{\"state\":\""<<(s.failed?"error":"running")<<"\",\"pid\":"<<GetCurrentProcessId()<<",\"uptimeSeconds\":"<<uptime<<",\"inputExclusive\":"<<(exclusive?"true":"false")<<",\"otherPcAudio\":true,\"packets\":"<<s.packets.load()<<",\"captureFrames\":"<<s.written.load()<<",\"consumedFrames\":"<<s.consumed.load()<<",\"inputPeak\":"<<s.inputPeak.exchange(0)<<",\"captureGaps\":"<<s.captureGaps.load()<<",\"captureLostFrames\":"<<s.captureLostFrames.load()<<",\"bufferShortages\":"<<s.underflows.load()<<",\"resyncs\":"<<s.resyncs.load()<<",\"lateOutput\":"<<s.renderLate.load()<<",\"duplicates\":"<<s.duplicates.load()<<",\"reserveMs\":"<<s.reserveMs.load()<<",\"queueMs\":"<<s.queueMs.load()<<",\"latencyMs\":"<<s.latencyMs.load()<<",\"correlation\":"<<s.corr.load()<<",\"measuring\":"<<(s.collect?"true":"false")<<",\"error\":\""<<escaped(error)<<"\"}";f.close();MoveFileExW(temp.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING);
 }
 int wmain(int argc,wchar_t**argv){
  if(argc<2)return 2;CoInitializeEx(nullptr,COINIT_MULTITHREADED);int code=0;

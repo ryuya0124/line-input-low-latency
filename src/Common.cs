@@ -8,7 +8,7 @@ using Microsoft.Win32;
 using System.Runtime.InteropServices;
 
 internal static class Common {
- internal const string Product="LineInputLowLatency", Version="0.3.0", ProductId="cd83fe09-230c-4e62-864c-3b0e14b4ac15";
+ internal const string Product="LineInputLowLatency", Version="0.3.1", ProductId="cd83fe09-230c-4e62-864c-3b0e14b4ac15";
  internal static readonly string Data=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),Product);
  internal static readonly string Install=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),Product);
  internal static readonly string Source=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),Product);

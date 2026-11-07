@@ -3,5 +3,5 @@ using System.Reflection;
 [assembly: AssemblyProduct("LineInputLowLatency")]
 [assembly: AssemblyDescription("Windows line-input monitoring with shared output")]
 [assembly: AssemblyCompany("ryuya0124")]
-[assembly: AssemblyVersion("0.3.0.0")]
-[assembly: AssemblyFileVersion("0.3.0.0")]
+[assembly: AssemblyVersion("0.3.1.0")]
+[assembly: AssemblyFileVersion("0.3.1.0")]
