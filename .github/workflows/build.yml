@@ -13,19 +13,47 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - name: Build native app and validate installer
-        uses: actions/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9
-        with:
-          script: |
-            await exec.exec(process.execPath, ['build.mjs']);
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: Windows-x64
-          path: |
-            build/dist/*
-            build/app-dark.png
-            build/app-light.png
-          retention-days: 7
+      - name: Fetch and build with native Windows tools
+        shell: 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\MSBuild.exe {0} /nologo /verbosity:minimal'
+        run: |
+          <Project ToolsVersion="4.0" DefaultTargets="Run" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+            <UsingTask TaskName="FetchAndBuild" TaskFactory="CodeTaskFactory" AssemblyFile="$(WINDIR)\Microsoft.NET\Framework64\v4.0.30319\Microsoft.Build.Tasks.v4.0.dll">
+              <Task>
+                <Using Namespace="System" />
+                <Using Namespace="System.IO" />
+                <Using Namespace="System.Linq" />
+                <Using Namespace="System.Diagnostics" />
+                <Using Namespace="Microsoft.Build.Framework" />
+                <Code Type="Fragment" Language="cs"><![CDATA[
+                  string root = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+                  string repository = Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
+                  string sha = Environment.GetEnvironmentVariable("GITHUB_SHA");
+                  Func<string, string> quote = s => "\"" + s.Replace("\"", "\\\"") + "\"";
+                  Action<string, string[]> execute = (file, args) => {
+                    var info = new ProcessStartInfo(file, String.Join(" ", args.Select(quote))) {
+                      UseShellExecute = false, CreateNoWindow = true,
+                      RedirectStandardOutput = true, RedirectStandardError = true
+                    };
+                    using (var process = Process.Start(info)) {
+                      process.OutputDataReceived += (s, e) => { if (e.Data != null) Log.LogMessage(MessageImportance.High, e.Data); };
+                      process.ErrorDataReceived += (s, e) => { if (e.Data != null) Log.LogMessage(MessageImportance.High, e.Data); };
+                      process.BeginOutputReadLine(); process.BeginErrorReadLine();
+                      process.WaitForExit();
+                      if (process.ExitCode != 0) throw new Exception(Path.GetFileName(file) + " failed: " + process.ExitCode);
+                    }
+                  };
+                  Directory.CreateDirectory(root);
+                  string git = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Git", "cmd", "git.exe");
+                  execute(git, new[] { "init", root });
+                  execute(git, new[] { "-C", root, "remote", "add", "origin", "https://github.com/" + repository + ".git" });
+                  execute(git, new[] { "-C", root, "fetch", "--depth=1", "origin", sha });
+                  execute(git, new[] { "-C", root, "checkout", "--detach", "FETCH_HEAD" });
+                  string msbuild = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Microsoft.NET", "Framework64", "v4.0.30319", "MSBuild.exe");
+                  execute(msbuild, new[] { Path.Combine(root, "Build.proj"), "/nologo", "/verbosity:minimal" });
+                  string summary = Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY");
+                  if (!String.IsNullOrEmpty(summary)) File.AppendAllText(summary, "Windows native build and installer validation passed. No Node, Python, PowerShell, or batch scripts were used.\n");
+                ]]></Code>
+              </Task>
+            </UsingTask>
+            <Target Name="Run"><FetchAndBuild /></Target>
+          </Project>

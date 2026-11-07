@@ -45,13 +45,13 @@ Windowsの「インストールされているアプリ」、またはスター�
 
 ## ビルド
 
-Visual StudioのC++デスクトップ開発ツール、Windows SDK、.NET Framework 4.8、Node.jsを用意して、リポジトリで次を実行します。
+Visual StudioのC++デスクトップ開発ツール、Windows SDK、.NET Framework 4.8を用意して、リポジトリで次を実行します。
 
 ```text
-node build.mjs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\MSBuild.exe Build.proj
 ```
 
-Node.jsはC#のビルドツールを起動するためだけに使います。コンパイラーは直接exeとして呼び出し、Python・ps1・bat・cmdのスクリプトは使用しません。製品の実行にNode.jsは不要です。
+MSBuildからC#のビルドツールを起動し、コンパイラーを直接exeとして呼び出します。Node.js・Python・ps1・bat・cmdのスクリプトは、製品にもビルドにも使用しません。CIもMSBuildとネイティブのGitだけで実行します。
 
 インストーラーとソースZIPは `build/dist` に生成します。ビルドではパッケージの展開・削除、実行ファイル形式、禁止スクリプトの混入、ダーク・ライトの画面生成を検証します。CIで実機の音声遅延や音切れまで検証するものではありません。
 

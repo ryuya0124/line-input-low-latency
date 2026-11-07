@@ -1,12 +1,12 @@
 Line Input Monitor 0.3.0
 
-Run "node build.mjs" from the repository root on Windows.
-Requirements: Visual Studio Desktop C++ tools, Windows SDK, .NET Framework 4.8,
-and Node.js for the build bootstrap only.
+Run MSBuild.exe Build.proj from the repository root on Windows.
+MSBuild.exe is available in Windows\Microsoft.NET\Framework64\v4.0.30319.
+Requirements: Visual Studio Desktop C++ tools, Windows SDK, .NET Framework 4.8.
 
-build.mjs directly launches csc.exe to compile BuildTool.cs and IconBuilder.cs.
+Build.proj directly launches csc.exe to compile BuildTool.cs and IconBuilder.cs.
 BuildTool.exe directly launches cl.exe and csc.exe without a command shell.
-No Python, PowerShell script files, batch files, or cmd scripts are used.
+No Node.js, Python, PowerShell script files, batch files, or cmd scripts are used.
 
 Native programs: AudioEngine.cpp and AudioSettings.cpp.
 UI: App.cs, Common.cs, DeviceSettings.cs, Theme.cs, AssemblyInfo.cs.

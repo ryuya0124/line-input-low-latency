@@ -1,0 +1,38 @@
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Framework>$(WINDIR)\Microsoft.NET\Framework64\v4.0.30319</Framework>
+    <BuildDirectory>$(MSBuildProjectDirectory)\build</BuildDirectory>
+  </PropertyGroup>
+  <UsingTask TaskName="Microsoft.Build.Tasks.Csc" AssemblyFile="$(Framework)\Microsoft.Build.Tasks.v4.0.dll" />
+  <UsingTask TaskName="RunNativeBuilder" TaskFactory="CodeTaskFactory" AssemblyFile="$(Framework)\Microsoft.Build.Tasks.v4.0.dll">
+    <ParameterGroup>
+      <Executable ParameterType="System.String" Required="true" />
+      <Root ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.Diagnostics" />
+      <Using Namespace="Microsoft.Build.Framework" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var info = new ProcessStartInfo(Executable, "\"" + Root + "\"") {
+          UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Root,
+          RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        using (var child = Process.Start(info)) {
+          child.OutputDataReceived += (sender, e) => { if (e.Data != null) Log.LogMessage(MessageImportance.High, e.Data); };
+          child.ErrorDataReceived += (sender, e) => { if (e.Data != null) Log.LogMessage(MessageImportance.High, e.Data); };
+          child.BeginOutputReadLine(); child.BeginErrorReadLine();
+          child.WaitForExit();
+          if (child.ExitCode != 0) throw new System.Exception("Native build failed: " + child.ExitCode);
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <Target Name="Build">
+    <MakeDir Directories="$(BuildDirectory)" />
+    <Csc Sources="$(MSBuildProjectDirectory)\src\BuildTool.cs;$(MSBuildProjectDirectory)\src\IconBuilder.cs"
+         References="$(Framework)\System.dll;$(Framework)\System.Core.dll;$(Framework)\System.Drawing.dll;$(Framework)\System.IO.Compression.dll;$(Framework)\System.IO.Compression.FileSystem.dll"
+         OutputAssembly="$(BuildDirectory)\BuildTool.exe" ToolPath="$(Framework)"
+         TargetType="Exe" Platform="x64" Optimize="true" CodePage="65001" UseHostCompilerIfAvailable="false" />
+    <RunNativeBuilder Executable="$(BuildDirectory)\BuildTool.exe" Root="$(MSBuildProjectDirectory)" />
+  </Target>
+</Project>
